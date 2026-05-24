@@ -1,0 +1,132 @@
+name: Deploy Backend to AWS (SSM)
+
+on:
+  push:
+    branches: [ "deploy" ]
+    paths:
+      - 'back-Ventas_SpringBoot/**'
+      - 'back-Despachos_SpringBoot/**'
+      - '.github/workflows/deploy-backend.yml'
+
+env:
+  AWS_REGION: us-east-1
+  BACKEND_INSTANCE_ID: ${{ secrets.BACKEND_INSTANCE_ID }}
+  BACKEND_APP_DIR: /home/ec2-user/backend
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        run: |
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+
+      - name: Build and Push Ventas Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./back-Ventas_SpringBoot/Springboot-API-REST
+          file: ./back-Ventas_SpringBoot/Springboot-API-REST/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/api-ventas:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/api-ventas:1.0.${{ github.run_number }}
+
+      - name: Build and Push Despachos Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
+          file: ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/api-despachos:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/api-despachos:1.0.${{ github.run_number }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        run: |
+          mkdir -p ~/.aws
+          cat > ~/.aws/credentials << EOF
+          [default]
+          aws_access_key_id=${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws_session_token=${{ secrets.AWS_SESSION_TOKEN }}
+          EOF
+          
+          cat > ~/.aws/config << EOF
+          [default]
+          region=${{ env.AWS_REGION }}
+          output=json
+          EOF
+
+      - name: Deploy backend via SSM
+        run: |
+          aws ssm send-command \
+            --region "${{ env.AWS_REGION }}" \
+            --document-name "AWS-RunShellScript" \
+            --instance-ids "${{ env.BACKEND_INSTANCE_ID }}" \
+            --parameters commands="[
+              \"mkdir -p ${{ env.BACKEND_APP_DIR }}\",
+              \"cd ${{ env.BACKEND_APP_DIR }}\",
+              \"cat << 'EOF' > docker-compose.yml
+              version: '3.8'
+              services:
+                db:
+                  image: mysql:8.0
+                  container_name: database_mysql
+                  restart: always
+                  environment:
+                    MYSQL_ROOT_PASSWORD: rootpassword
+                    MYSQL_DATABASE: innovatech
+                    MYSQL_USER: dbuser
+                    MYSQL_PASSWORD: dbpassword
+                  ports:
+                    - '3306:3306'
+                  volumes:
+                    - db_data:/var/lib/mysql
+                api-ventas:
+                  image: ${{ secrets.DOCKERHUB_USERNAME }}/api-ventas:latest
+                  container_name: api_ventas_container
+                  restart: always
+                  ports:
+                    - '8080:8080'
+                  environment:
+                    - DB_ENDPOINT=db
+                    - DB_PORT=3306
+                    - DB_NAME=innovatech
+                    - DB_USERNAME=dbuser
+                    - DB_PASSWORD=dbpassword
+                  depends_on:
+                    - db
+                api-despachos:
+                  image: ${{ secrets.DOCKERHUB_USERNAME }}/api-despachos:latest
+                  container_name: api_despachos_container
+                  restart: always
+                  ports:
+                    - '8081:8081'
+                  environment:
+                    - DB_ENDPOINT=db
+                    - DB_PORT=3306
+                    - DB_NAME=innovatech
+                    - DB_USERNAME=dbuser
+                    - DB_PASSWORD=dbpassword
+                  depends_on:
+                    - db
+              volumes:
+                db_data:
+                  driver: local
+              EOF\",
+              \"docker compose pull\",
+              \"docker compose up -d\"
+            ]"

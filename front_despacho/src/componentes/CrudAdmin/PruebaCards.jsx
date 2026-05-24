@@ -1,39 +1,32 @@
-import { useState } from "react";
 import { CardComponent } from "./CardComponent";
-import { TableCompras } from "./TableCompras";
-import { TableDespachos } from "./TableDespachos";
 
-export const PruebaCards = () => {
-  const [tablaCompras, setTablaCompras] = useState(false);
-  const [tablaOrdenes, setTablaOrdenes] = useState(false);
-
+export const PruebaCards = ({ setView }) => {
   return (
-    <section>
-      <div className="flex justify-center">
+    <section className="py-10">
+      <div className="text-center mb-12">
+        <h2 className="text-4xl font-extrabold text-teal-800 tracking-tight">
+          Panel de Administración de Despachos
+        </h2>
+        <p className="text-gray-500 mt-2 text-lg">
+          Gestiona las compras entrantes y controla el estado de las entregas logísticas.
+        </p>
+      </div>
+
+      <div className="flex flex-col md:flex-row justify-center gap-8 max-w-5xl mx-auto px-4">
         <CardComponent
           title="Consultar Ordenes de compra 💰"
           description="Revisa las últimas oc realizadas para generar su despacho"
           buttonText="Consultar"
-          onClick={() => {
-            setTablaCompras(true);
-            setTablaOrdenes(false);
-          }}
+          onClick={() => setView("ventas")}
         />
         <CardComponent
           title="Revisar Ordenes de despacho 🚚"
           description="Consulta los despachos realizados, modifica los registros de intentos o cierra la orden"
           buttonText="Consultar"
-          onClick={() => {
-            setTablaCompras(false);
-            setTablaOrdenes(true);
-          }}
+          onClick={() => setView("despachos")}
         />
       </div>
-
-      <section>
-        {tablaCompras && <TableCompras />}
-        {tablaOrdenes && <TableDespachos />}
-      </section>
     </section>
   );
 };
+

@@ -1,0 +1,86 @@
+name: Deploy Frontend to AWS (SSM)
+
+on:
+  push:
+    branches: [ "deploy" ]
+    paths:
+      - 'front_despacho/**'
+      - '.github/workflows/deploy-frontend.yml'
+
+env:
+  AWS_REGION: us-east-1
+  FRONTEND_INSTANCE_ID: ${{ secrets.FRONTEND_INSTANCE_ID }}
+  FRONTEND_APP_DIR: /home/ec2-user/frontend
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        run: |
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+
+      - name: Build and Push Frontend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./front_despacho
+          file: ./front_despacho/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/front-despacho:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/front-despacho:1.0.${{ github.run_number }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        run: |
+          mkdir -p ~/.aws
+          cat > ~/.aws/credentials << EOF
+          [default]
+          aws_access_key_id=${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws_session_token=${{ secrets.AWS_SESSION_TOKEN }}
+          EOF
+          
+          cat > ~/.aws/config << EOF
+          [default]
+          region=${{ env.AWS_REGION }}
+          output=json
+          EOF
+
+      - name: Deploy frontend via SSM
+        run: |
+          aws ssm send-command \
+            --region "${{ env.AWS_REGION }}" \
+            --document-name "AWS-RunShellScript" \
+            --instance-ids "${{ env.FRONTEND_INSTANCE_ID }}" \
+            --parameters commands="[
+              \"mkdir -p ${{ env.FRONTEND_APP_DIR }}\",
+              \"cd ${{ env.FRONTEND_APP_DIR }}\",
+              \"cat << 'EOF' > docker-compose.yml
+              version: '3.8'
+              services:
+                frontend:
+                  image: ${{ secrets.DOCKERHUB_USERNAME }}/front-despacho:latest
+                  container_name: frontend_container
+                  restart: always
+                  ports:
+                    - '80:80'
+                  environment:
+                    - BACKEND_VENTAS_IP=${{ secrets.BACKEND_PRIVATE_IP }}
+                    - BACKEND_DESPACHOS_IP=${{ secrets.BACKEND_PRIVATE_IP }}
+              EOF\",
+              \"docker compose pull\",
+              \"docker compose up -d\"
+            ]"
