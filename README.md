@@ -1,145 +1,136 @@
-# Innovatech Chile - Sistema de Gestión de Ventas y Despachos (Evaluación Parcial 2)
+# Innovatech Chile - Sistema de Gestión de Ventas y Despachos
 
-Este repositorio contiene la solución completa para la contenedorización y automatización del despliegue (CI/CD) de la plataforma de Innovatech Chile. La solución consta de tres microservicios principales desplegados en la nube de AWS (utilizando instancias EC2 separadas para Frontend y Backend/Base de datos) y orquestados localmente con Docker Compose.
+Este repositorio contiene la solución técnica de contenedorización y automatización del despliegue (CI/CD) para la plataforma de Innovatech Chile, desarrollada para la Evaluación Parcial 2 de la asignatura Introducción a Herramientas DevOps.
+
+La solución integra tres microservicios en una arquitectura distribuida en la nube de AWS (instancias EC2 separadas para Frontend y Backend/Base de datos) mediante el uso de Docker, Docker Compose y GitHub Actions.
 
 ---
 
-## 🛠️ Arquitectura de la Solución
+## Arquitectura del Sistema
 
-La infraestructura en la nube está dividida de forma segura utilizando subredes públicas y privadas:
+El despliegue está estructurado mediante subredes en AWS para garantizar la comunicación y seguridad de los componentes:
+
+```mermaid
+graph TD
+    User([Navegador Usuario]) -->|Acceso HTTP Puerto 80| FE_EC2[EC2 Frontend - Subred Pública]
+    subgraph FE_EC2_Instance [Instancia Frontend]
+        FE_EC2 -->|Nginx| ReactApp[React App - Contenido Estático]
+        FE_EC2 -->|Proxy Pass /api/v1/ventas| BE_Ventas_API
+        FE_EC2 -->|Proxy Pass /api/v1/despachos| BE_Despachos_API
+    end
+    
+    subgraph BE_EC2_Instance [Instancia Backend - Subred Privada]
+        BE_Ventas_API[API Ventas - Spring Boot Port 8080] -->|Conexión JDBC| MySQL[MySQL Container Port 3306]
+        BE_Despachos_API[API Despachos - Spring Boot Port 8081] -->|Conexión JDBC| MySQL
+        MySQL -->|Volumen Persistente| MySQL_Volume[(db_data - Named Volume)]
+    end
+```
 
 1. **Instancia Frontend (Subred Pública)**:
-   - **Frontend App (React + Vite)**: Compilado y servido por un contenedor **Nginx** expuesto en el puerto `80`.
-   - **Proxy Inverso (Nginx)**: Redirige de manera transparente los llamados a `/api/v1/ventas/*` y `/api/v1/despachos/*` hacia la dirección IP privada de la instancia Backend en la subred privada, evitando exponer las APIs backend directamente al internet público.
+   - **Aplicación React**: Compilada y servida mediante un servidor web Nginx expuesto en el puerto 80.
+   - **Proxy Inverso (Nginx)**: Redirige las peticiones `/api/v1/ventas/*` y `/api/v1/despachos/*` hacia la dirección IP privada de la instancia Backend, evitando la exposición directa de las APIs a redes públicas.
 
 2. **Instancia Backend (Subred Privada)**:
-   - **api-ventas (Spring Boot)**: Microservicio encargado del negocio de ventas. Expuesto internamente en el puerto `8080`.
-   - **api-despachos (Spring Boot)**: Microservicio encargado del negocio de despachos. Expuesto internamente en el puerto `8081`.
-   - **db (MySQL 8.0)**: Motor de base de datos relacional MySQL. Expuesto en el puerto `3306` dentro de la red interna de Docker.
+   - **API Ventas (Spring Boot)**: Servicio encargado del negocio de ventas en el puerto 8080.
+   - **API Despachos (Spring Boot)**: Servicio encargado del negocio de despachos en el puerto 8081.
+   - **Base de Datos (MySQL 8.0)**: Base de datos relacional expuesta internamente en el puerto 3306 de la red Docker.
 
 ---
 
-## 📁 Estructura del Repositorio
+## Estructura del Proyecto
 
 ```text
 Eval 2 - Innovatech/
 ├── .github/
 │   └── workflows/
-│       ├── deploy-backend.yml      # CI/CD: Compila, publica y despliega las APIs (Ventas y Despachos)
-│       └── deploy-frontend.yml     # CI/CD: Compila, publica y despliega la aplicación React
-├── back-Despachos_SpringBoot/      # Código fuente del microservicio de Despachos
+│       ├── deploy-backend.yml      # Pipeline CI/CD del Backend
+│       └── deploy-frontend.yml     # Pipeline CI/CD del Frontend
+├── back-Despachos_SpringBoot/      # Microservicio de Despachos (Spring Boot)
 │   └── Springboot-API-REST-DESPACHO/
 │       ├── Dockerfile              # Dockerfile Multi-stage del backend Despachos
 │       ├── .dockerignore
 │       └── src/...
-├── back-Ventas_SpringBoot/         # Código fuente del microservicio de Ventas
+├── back-Ventas_SpringBoot/         # Microservicio de Ventas (Spring Boot)
 │   └── Springboot-API-REST/
 │       ├── Dockerfile              # Dockerfile Multi-stage del backend Ventas
 │       ├── .dockerignore
 │       └── src/...
-├── front_despacho/                 # Código fuente de la interfaz de usuario
+├── front_despacho/                 # Aplicación Frontend (React + Vite)
 │   ├── nginx/
-│   │   └── default.conf.template   # Template de Nginx para inyectar IPs de AWS dinámicamente
+│   │   └── default.conf.template   # Configuración de Nginx para proxy dinámico
 │   ├── Dockerfile                  # Dockerfile Multi-stage del frontend
 │   ├── .dockerignore
-│   ├── vite.config.js              # Configuración de proxy local para desarrollo
+│   ├── vite.config.js              # Configuración de proxy de desarrollo
 │   └── src/...
-└── docker-compose.yml              # Orquestador local para desarrollo y testing
+└── docker-compose.yml              # Orquestador local para testing y desarrollo
 ```
 
 ---
 
-## 🚀 Guía de Ejecución Local
+## Contenedores y Buenas Prácticas
 
-Para levantar todo el stack tecnológico en tu máquina local, sigue estos pasos:
+### 1. Construcción Multi-Stage
+Se estructuraron los Dockerfiles en múltiples etapas para optimizar el peso y seguridad de las imágenes de producción:
+- **Frontend**: La etapa de construcción utiliza Node.js 20 para compilar la aplicación. La etapa de ejecución copia únicamente los archivos estáticos resultantes (/dist) a una imagen limpia de Nginx, reduciendo el tamaño a unos 25 MB.
+- **Backends**: La primera etapa utiliza Maven para resolver dependencias y compilar el archivo JAR ejecutable. La segunda etapa copia solo el JAR compilado a una imagen JRE Alpine de Eclipse Temurin, eliminando dependencias de construcción del entorno de producción.
 
-### Requisitos Previos
-- Tener instalado **Docker Desktop** y verificar que esté en ejecución.
-- Tener instalado **Git**.
+### 2. Principio de Menor Privilegio (Usuario No-Root)
+En los Dockerfiles de los microservicios Spring Boot, se configuró la ejecución bajo un usuario del sistema sin privilegios administrativos (appuser) y su grupo correspondiente (appgroup). Esto mitiga riesgos de seguridad asociados al escalado de privilegios.
 
-### Instrucciones
-1. Abre tu terminal en la carpeta raíz del proyecto (`Eval 2 - Innovatech`).
-2. Ejecuta el comando para compilar e iniciar los contenedores:
+### 3. Independencia de Entornos en el Frontend
+La aplicación utiliza rutas relativas (`/api/v1/...`) para los llamados HTTP. 
+- En el entorno de desarrollo, Vite redirige las llamadas a los puertos locales.
+- En el entorno de producción, Nginx procesa las variables de entorno (`BACKEND_VENTAS_IP` y `BACKEND_DESPACHOS_IP`) mediante la plantilla `default.conf.template` durante el arranque. Esto permite el despliegue del contenedor en cualquier infraestructura sin requerir una recompilación de la aplicación.
+
+---
+
+## Persistencia de Datos
+
+Para la base de datos MySQL, se definió un volumen nombrado (Named Volume) en la configuración de Docker Compose:
+* **Volumen**: `db_data` en la ruta `/var/lib/mysql`.
+
+### Justificación Técnica:
+1. **Permisos de Escritura**: MySQL requiere permisos específicos del sistema de archivos interno de Linux. El uso de volúmenes nombrados permite que Docker gestione automáticamente estos permisos, evitando errores de inicialización.
+2. **Rendimiento**: El almacenamiento administrado de Docker garantiza un rendimiento de lectura/escritura óptimo, independiente de la estructura física de carpetas del host.
+3. **Mantenibilidad**: Los datos de la base de datos se conservan íntegros tras paradas, reinicios o eliminaciones de los contenedores (`docker compose down`).
+
+---
+
+## Ejecución Local
+
+Para levantar el stack completo en desarrollo local:
+
+1. Abrir una terminal en la carpeta raíz del proyecto (`Eval 2 - Innovatech`).
+2. Ejecutar la compilación y levantamiento:
    ```bash
    docker compose up --build -d
    ```
-3. Docker compilará los microservicios Spring Boot, generará el build de React, descargará la imagen oficial de MySQL e inicializará el stack completo de manera ordenada.
-4. **Verificación de servicios**:
-   - **Aplicación Frontend**: Accede desde tu navegador web a [http://localhost](http://localhost) (Puerto 80).
-   - **API Ventas (Swagger)**: Accede a [http://localhost:8080/swagger-ui/index.html](http://localhost:8080/swagger-ui/index.html).
-   - **API Despachos (Swagger)**: Accede a [http://localhost:8081/swagger-ui/index.html](http://localhost:8081/swagger-ui/index.html).
-   - **Base de Datos**: Expuesta en `localhost:3306` para conexiones desde clientes externos (usuario: `dbuser`, contraseña: `dbpassword`, base de datos: `innovatech`).
-
-### Comandos Útiles
-* **Ver estado de los contenedores**: `docker compose ps`
-* **Ver logs en tiempo real**: `docker compose logs -f`
-* **Detener los servicios**: `docker compose down`
+3. Puertos de acceso:
+   - **Frontend (React)**: [http://localhost](http://localhost) (Puerto 80).
+   - **API Ventas**: [http://localhost:8080/swagger-ui/index.html](http://localhost:8080/swagger-ui/index.html).
+   - **API Despachos**: [http://localhost:8081/swagger-ui/index.html](http://localhost:8081/swagger-ui/index.html).
 
 ---
 
-## 📦 Buenas Prácticas de Contenedorización Implementadas
+## Pipeline de Integración y Despliegue Continuo (CI/CD)
 
-### 1. Construcción Multi-Stage (Multi-Etapas)
-Se diseñaron Dockerfiles estructurados en fases para optimizar peso, eficiencia y seguridad:
-- **Frontend**: Etapa 1 utiliza una imagen ligera de Node.js para compilar los assets estáticos de React. Etapa 2 copia únicamente la carpeta final compilada (`dist`) a una imagen limpia de Nginx, reduciendo el tamaño de la imagen final a solo **~25 MB**.
-- **Backend (Spring Boot)**: Etapa 1 usa Maven para resolver dependencias y empaquetar el código compilado en un archivo JAR. Etapa 2 usa una imagen JRE Alpine limpia de Eclipse Temurin para correr únicamente el JAR ejecutable, eliminando todo el compilador de Maven y dependencias innecesarias de la imagen de producción.
+Los workflows de GitHub Actions están programados para ejecutarse al realizar un push en la rama `deploy` o de forma manual mediante `workflow_dispatch`.
 
-### 2. Principio de Menor Privilegio (Usuario No-Root)
-En los Dockerfiles de los microservicios Spring Boot, se crea un grupo (`appgroup`) y un usuario sin privilegios administrativos (`appuser`). El contenedor corre bajo las credenciales de este usuario con la instrucción `USER appuser`. Esto minimiza la superficie de ataque y previene vulnerabilidades críticas de escalamiento de privilegios en el host de AWS.
+### Funcionamiento de los Pipelines:
+1. **Fase de Construcción y Publicación**: Automatiza la descarga de código, inicio de sesión en Docker Hub, construcción de imágenes con tags numerados (`1.0.${GITHUB_RUN_NUMBER}`) y la subida al registro.
+2. **Fase de Despliegue**: Se conecta con AWS mediante credenciales temporales y utiliza AWS Systems Manager (SSM) para enviar de forma segura un comando shell a la instancia EC2.
+3. **Bootstrap Automatizado**: El script ejecutado en la máquina EC2:
+   - Instala Docker y Docker Compose si no están instalados.
+   - Crea el directorio de trabajo de la aplicación.
+   - Genera dinámicamente el archivo `docker-compose.yml` inyectando los secretos de entorno y credenciales de Docker Hub.
+   - Ejecuta `docker compose pull` y `docker compose up -d` para desplegar la nueva versión.
 
-### 3. Independencia de Entornos en el Frontend (Reverse Proxy dinámico)
-El frontend de React no almacena IPs fijas. En su lugar:
-- En **desarrollo local**, `vite.config.js` actúa como proxy apuntando a `localhost:8080` y `localhost:8081`.
-- En **producción (AWS)**, el contenedor Nginx recibe las variables de entorno `BACKEND_VENTAS_IP` y `BACKEND_DESPACHOS_IP` a través de un archivo template (`default.conf.template`) y utiliza `envsubst` al arrancar. Nginx se encarga de resolver los endpoints sin necesidad de recompilar la imagen de Node.js.
-
----
-
-## 💾 Persistencia de Datos: Justificación Técnica
-
-### Elección de Volumen: Named Volumes (Volúmenes Nombrados)
-En el archivo `docker-compose.yml`, el contenedor de MySQL (`db`) monta el volumen persistente `db_data` en la ruta interna `/var/lib/mysql`. 
-
-Se optó por **Named Volumes** en lugar de **Bind Mounts** por las siguientes razones técnicas:
-1. **Rendimiento e Integridad**: Los Named Volumes son administrados directamente por el motor de Docker. Esto garantiza un rendimiento óptimo de I/O en la base de datos MySQL, a diferencia de los Bind Mounts, que dependen del sistema de archivos del host (especialmente costoso en Windows usando WSL2).
-2. **Permisos y Seguridad**: MySQL dentro de Linux corre bajo el UID `999`. Si se usara Bind Mount, la carpeta del host heredaría conflictos de permisos impidiendo la inicialización correcta del motor de base de datos. Docker gestiona los permisos automáticamente al usar volúmenes nombrados.
-3. **Independencia del Host**: No requiere conocer la ruta exacta o estructura del disco del servidor físico de AWS, haciendo que el Docker Compose sea 100% portable y reutilizable.
-
----
-
-## 🚀 Pipeline de Integración y Despliegue Continuo (CI/CD)
-
-El pipeline está diseñado en **GitHub Actions** y se activa automáticamente con cada **Push** hacia la rama `deploy`.
-
-### Flujos de Trabajo
-1. **Deploy Backend (`deploy-backend.yml`)**:
-   - **Construcción**: Obtiene el código fuente, inicia sesión en Docker Hub y construye las imágenes optimizadas para `api-ventas` y `api-despachos`.
-   - **Publicación**: Sube las imágenes a Docker Hub con la etiqueta `latest` y una etiqueta numerada (`1.0.${GITHUB_RUN_NUMBER}`) para control de versiones y rollback.
-   - **Despliegue**: Inicia sesión en AWS usando credenciales seguras de sesión y utiliza **AWS Systems Manager (SSM)** (`aws ssm send-command`) con el documento `AWS-RunShellScript` para enviar de forma segura a la instancia **EC2 Backend** las instrucciones de actualización:
-     ```bash
-     cd /home/ec2-user/backend
-     docker compose pull
-     docker compose up -d
-     ```
-
-2. **Deploy Frontend (`deploy-frontend.yml`)**:
-   - **Construcción y Publicación**: Construye la imagen de Nginx del Frontend y la publica en Docker Hub.
-   - **Despliegue**: Envía un comando SSM a la instancia **EC2 Frontend** para realizar pull de la nueva imagen y reiniciar el contenedor:
-     ```bash
-     cd /home/ec2-user/frontend
-     docker compose pull
-     docker compose up -d
-     ```
-
-### Configuración de Secretos en GitHub (GitHub Secrets)
-Para el correcto funcionamiento del pipeline, se deben configurar los siguientes secretos en el repositorio de GitHub:
-
-| Nombre del Secreto | Descripción | Ejemplo / Notas |
-|---|---|---|
-| `DOCKERHUB_USERNAME` | Nombre de usuario de Docker Hub. | `tu_usuario_docker` |
-| `DOCKERHUB_TOKEN` | Access Token generado en la consola de Docker Hub. | `dckr_pat_...` |
-| `AWS_ACCESS_KEY_ID` | Access Key de AWS para el rol con permisos SSM. | `AKIAIOSFODNN7EXAMPLE` |
-| `AWS_SECRET_ACCESS_KEY` | Secret Key asociada al rol de AWS. | `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY` |
-| `AWS_SESSION_TOKEN` | Session Token de AWS (requerido si usas AWS Academy). | *Cadena de token larga o dejar vacío si es cuenta personal* |
-| `BACKEND_INSTANCE_ID` | ID de la instancia EC2 que corre el Backend. | `i-0123456789abcdef0` |
-| `FRONTEND_INSTANCE_ID` | ID de la instancia EC2 que corre el Frontend. | `i-0abcdef1234567890` |
-| `BACKEND_PRIVATE_IP` | Dirección IP privada de la instancia EC2 Backend. | `192.168.3.10` (Requerido para que el Frontend rutee al Backend en AWS) |
+### Secretos requeridos en el repositorio de GitHub:
+- `DOCKERHUB_USERNAME`: Usuario de Docker Hub.
+- `DOCKERHUB_TOKEN`: Access Token de Docker Hub.
+- `AWS_ACCESS_KEY_ID`: ID de clave de acceso de AWS.
+- `AWS_SECRET_ACCESS_KEY`: Clave de acceso secreta de AWS.
+- `AWS_SESSION_TOKEN`: Token de sesión temporal de AWS.
+- `BACKEND_INSTANCE_ID`: ID de la instancia de Backend EC2.
+- `FRONTEND_INSTANCE_ID`: ID de la instancia de Frontend EC2.
+- `BACKEND_PRIVATE_IP`: Dirección IP privada de la instancia Backend.

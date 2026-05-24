@@ -7,6 +7,7 @@ on:
       - 'back-Ventas_SpringBoot/**'
       - 'back-Despachos_SpringBoot/**'
       - '.github/workflows/deploy-backend.yml'
+  workflow_dispatch:
 
 env:
   AWS_REGION: us-east-1
@@ -77,6 +78,22 @@ jobs:
             --document-name "AWS-RunShellScript" \
             --instance-ids "${{ env.BACKEND_INSTANCE_ID }}" \
             --parameters commands="[
+              \"# 1. Instalar Docker si no esta presente\",
+              \"if ! command -v docker &> /dev/null; then\",
+              \"  sudo dnf update -y\",
+              \"  sudo dnf install docker -y\",
+              \"  sudo systemctl start docker\",
+              \"  sudo systemctl enable docker\",
+              \"  sudo usermod -aG docker ec2-user\",
+              \"fi\",
+              \"# 2. Instalar Docker Compose si no esta presente\",
+              \"if ! docker compose version &> /dev/null; then\",
+              \"  sudo curl -L \\\"https://github.com/docker/compose/releases/latest/download/docker-compose-\\\$(uname -s)-\\\$(uname -m)\\\" -o /usr/local/bin/docker-compose\",
+              \"  sudo chmod +x /usr/local/bin/docker-compose\",
+              \"  mkdir -p /home/ec2-user/.docker/cli-plugins/\",
+              \"  ln -s /usr/local/bin/docker-compose /home/ec2-user/.docker/cli-plugins/docker-compose\",
+              \"fi\",
+              \"# 3. Crear directorio de la app y escribir docker-compose.yml\",
               \"mkdir -p ${{ env.BACKEND_APP_DIR }}\",
               \"cd ${{ env.BACKEND_APP_DIR }}\",
               \"cat << 'EOF' > docker-compose.yml
@@ -127,6 +144,9 @@ jobs:
                 db_data:
                   driver: local
               EOF\",
+              \"# 4. Asegurar permisos correctos de ec2-user\",
+              \"sudo chown -R ec2-user:ec2-user ${{ env.BACKEND_APP_DIR }}\",
+              \"# 5. Descargar nuevas imagenes y ejecutar\",
               \"docker compose pull\",
               \"docker compose up -d\"
             ]"
