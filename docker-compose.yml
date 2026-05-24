@@ -1,0 +1,69 @@
+version: "3.8"
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: database_mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: innovatech
+      MYSQL_USER: dbuser
+      MYSQL_PASSWORD: dbpassword
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+
+  api-ventas:
+    build:
+      context: ./back-Ventas_SpringBoot/Springboot-API-REST
+      dockerfile: Dockerfile
+    container_name: api_ventas_container
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_ENDPOINT=db
+      - DB_PORT=3306
+      - DB_NAME=innovatech
+      - DB_USERNAME=dbuser
+      - DB_PASSWORD=dbpassword
+    depends_on:
+      - db
+
+  api-despachos:
+    build:
+      context: ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
+      dockerfile: Dockerfile
+    container_name: api_despachos_container
+    restart: always
+    ports:
+      - "8081:8081"
+    environment:
+      - DB_ENDPOINT=db
+      - DB_PORT=3306
+      - DB_NAME=innovatech
+      - DB_USERNAME=dbuser
+      - DB_PASSWORD=dbpassword
+    depends_on:
+      - db
+
+  frontend:
+    build:
+      context: ./front_despacho
+      dockerfile: Dockerfile
+    container_name: frontend_container
+    restart: always
+    ports:
+      - "80:80"
+    environment:
+      - BACKEND_VENTAS_IP=api-ventas
+      - BACKEND_DESPACHOS_IP=api-despachos
+    depends_on:
+      - api-ventas
+      - api-despachos
+
+volumes:
+  db_data:
+    driver: local
