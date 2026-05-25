@@ -1,20 +1,27 @@
+# Definimos la versión de docker compose a usar
 version: "3.8"
 
 services:
+  # Servicio de la base de datos MySQL
   db:
     image: mysql:8.0
     container_name: database_mysql
+    # Si por alguna razón el contenedor de la BD se apaga, Docker lo levantará automáticamente
     restart: always
+    # Configuramos las variables para crear la BD inicial y sus accesos
     environment:
       MYSQL_ROOT_PASSWORD: rootpassword
       MYSQL_DATABASE: innovatech
       MYSQL_USER: dbuser
       MYSQL_PASSWORD: dbpassword
+    # Mapeamos el puerto de MySQL para poder acceder desde la máquina local si es necesario
     ports:
       - "3306:3306"
+    # Usamos un volumen para que los datos de la base de datos no se borren al apagar el contenedor
     volumes:
       - db_data:/var/lib/mysql
 
+  # Servicio de la API de Ventas (Backend)
   api-ventas:
     build:
       context: ./back-Ventas_SpringBoot/Springboot-API-REST
@@ -23,15 +30,18 @@ services:
     restart: always
     ports:
       - "8080:8080"
+    # Le pasamos la configuración para que se conecte al contenedor de la base de datos (db)
     environment:
       - DB_ENDPOINT=db
       - DB_PORT=3306
       - DB_NAME=innovatech
       - DB_USERNAME=dbuser
       - DB_PASSWORD=dbpassword
+    # Le decimos que espere a que el contenedor de la BD esté listo antes de arrancar
     depends_on:
       - db
 
+  # Servicio de la API de Despachos (Backend)
   api-despachos:
     build:
       context: ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
@@ -40,30 +50,37 @@ services:
     restart: always
     ports:
       - "8081:8081"
+    # Le pasamos la misma configuración de la base de datos para que registre los despachos
     environment:
       - DB_ENDPOINT=db
       - DB_PORT=3306
       - DB_NAME=innovatech
       - DB_USERNAME=dbuser
       - DB_PASSWORD=dbpassword
+    # También depende de que la base de datos esté activa primero
     depends_on:
       - db
 
+  # Servicio del Frontend en React con Nginx
   frontend:
     build:
       context: ./front_despacho
       dockerfile: Dockerfile
     container_name: frontend_container
     restart: always
+    # Exponemos la web en el puerto 80 (HTTP) que es el estándar
     ports:
       - "80:80"
+    # Configuramos a dónde debe apuntar el proxy de Nginx de manera local (usamos los nombres de los servicios de Docker)
     environment:
       - BACKEND_VENTAS_IP=api-ventas
       - BACKEND_DESPACHOS_IP=api-despachos
+    # Indicamos que primero deben levantar los dos microservicios para evitar errores de conexión
     depends_on:
       - api-ventas
       - api-despachos
 
+# Declaramos el volumen para la persistencia de los datos de MySQL
 volumes:
   db_data:
     driver: local
