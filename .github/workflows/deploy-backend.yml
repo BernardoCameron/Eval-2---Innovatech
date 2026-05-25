@@ -14,20 +14,26 @@ env:
   BACKEND_INSTANCE_ID: ${{ secrets.BACKEND_INSTANCE_ID }}
   BACKEND_APP_DIR: /home/ec2-user/backend
 
+# Definimos las tareas o trabajos (jobs) del pipeline
 jobs:
+  # Primer trabajo: Compilar el código de Spring Boot y subir las imágenes a Docker Hub
   build-and-push:
     runs-on: ubuntu-latest
     steps:
+      # Descargamos el código de nuestro repositorio en el servidor de GitHub
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Configuramos la herramienta Buildx de Docker para permitir compilaciones eficientes
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # Iniciamos sesión en Docker Hub de forma segura usando nuestros secretos
       - name: Log in to Docker Hub
         run: |
           echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
+      # Compilamos y subimos la imagen de Ventas (usa el Dockerfile del microservicio)
       - name: Build and Push Ventas Image
         uses: docker/build-push-action@v5
         with:
@@ -38,6 +44,7 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/api-ventas:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/api-ventas:1.0.${{ github.run_number }}
 
+      # Compilamos y subimos la imagen de Despachos (usa el Dockerfile del microservicio)
       - name: Build and Push Despachos Image
         uses: docker/build-push-action@v5
         with:
@@ -48,13 +55,16 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/api-despachos:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/api-despachos:1.0.${{ github.run_number }}
 
+  # Segundo trabajo: Desplegar los contenedores en nuestra instancia EC2 de AWS
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
+      # Descargamos el código para tener los archivos a mano
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Configuramos las credenciales temporales de AWS Academy en el servidor de GitHub
       - name: Configure AWS credentials
         run: |
           mkdir -p ~/.aws
@@ -71,6 +81,7 @@ jobs:
           output=json
           EOF
 
+      # Generamos el archivo docker-compose.yml dinámicamente y lo convertimos a Base64 para enviarlo sin errores de texto
       - name: Generate docker-compose.yml
         run: |
           cat << 'EOF' > docker-compose.yml
