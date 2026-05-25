@@ -71,6 +71,58 @@ jobs:
           output=json
           EOF
 
+      - name: Generate docker-compose.yml
+        run: |
+          cat << 'EOF' > docker-compose.yml
+          version: '3.8'
+          services:
+            db:
+              image: mysql:8.0
+              container_name: database_mysql
+              restart: always
+              environment:
+                MYSQL_ROOT_PASSWORD: rootpassword
+                MYSQL_DATABASE: innovatech
+                MYSQL_USER: dbuser
+                MYSQL_PASSWORD: dbpassword
+              ports:
+                - '3306:3306'
+              volumes:
+                - db_data:/var/lib/mysql
+            api-ventas:
+              image: ${{ secrets.DOCKERHUB_USERNAME }}/api-ventas:latest
+              container_name: api_ventas_container
+              restart: always
+              ports:
+                - '8080:8080'
+              environment:
+                - DB_ENDPOINT=db
+                - DB_PORT=3306
+                - DB_NAME=innovatech
+                - DB_USERNAME=dbuser
+                - DB_PASSWORD=dbpassword
+              depends_on:
+                - db
+            api-despachos:
+              image: ${{ secrets.DOCKERHUB_USERNAME }}/api-despachos:latest
+              container_name: api_despachos_container
+              restart: always
+              ports:
+                - '8081:8081'
+              environment:
+                - DB_ENDPOINT=db
+                - DB_PORT=3306
+                - DB_NAME=innovatech
+                - DB_USERNAME=dbuser
+                - DB_PASSWORD=dbpassword
+              depends_on:
+                - db
+          volumes:
+            db_data:
+              driver: local
+          EOF
+          echo "BACKEND_COMPOSE_B64=$(base64 -w 0 docker-compose.yml)" >> $GITHUB_ENV
+
       - name: Deploy backend via SSM
         run: |
           aws ssm send-command \
@@ -80,70 +132,25 @@ jobs:
             --parameters commands="[
               \"# 1. Instalar Docker si no esta presente\",
               \"if ! command -v docker &> /dev/null; then\",
-              \"  sudo dnf update -y\",
-              \"  sudo dnf install docker -y\",
+              \"  sudo dnf update -y || sudo yum update -y\",
+              \"  sudo dnf install docker -y || sudo yum install docker -y\",
               \"  sudo systemctl start docker\",
               \"  sudo systemctl enable docker\",
               \"  sudo usermod -aG docker ec2-user\",
               \"fi\",
               \"# 2. Instalar Docker Compose si no esta presente\",
               \"if ! docker compose version &> /dev/null; then\",
-              \"  sudo dnf install docker-compose-plugin -y\",
+              \"  sudo mkdir -p /usr/libexec/docker/cli-plugins\",
+              \"  sudo curl -L \\\"https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64\\\" -o /usr/libexec/docker/cli-plugins/docker-compose\",
+              \"  sudo chmod +x /usr/libexec/docker/cli-plugins/docker-compose\",
               \"fi\",
               \"# 3. Crear directorio de la app y escribir docker-compose.yml\",
-              \"mkdir -p ${{ env.BACKEND_APP_DIR }}\",
-              \"cd ${{ env.BACKEND_APP_DIR }}\",
-              \"cat << 'EOF' > docker-compose.yml
-              version: '3.8'
-              services:
-                db:
-                  image: mysql:8.0
-                  container_name: database_mysql
-                  restart: always
-                  environment:
-                    MYSQL_ROOT_PASSWORD: rootpassword
-                    MYSQL_DATABASE: innovatech
-                    MYSQL_USER: dbuser
-                    MYSQL_PASSWORD: dbpassword
-                  ports:
-                    - '3306:3306'
-                  volumes:
-                    - db_data:/var/lib/mysql
-                api-ventas:
-                  image: ${{ secrets.DOCKERHUB_USERNAME }}/api-ventas:latest
-                  container_name: api_ventas_container
-                  restart: always
-                  ports:
-                    - '8080:8080'
-                  environment:
-                    - DB_ENDPOINT=db
-                    - DB_PORT=3306
-                    - DB_NAME=innovatech
-                    - DB_USERNAME=dbuser
-                    - DB_PASSWORD=dbpassword
-                  depends_on:
-                    - db
-                api-despachos:
-                  image: ${{ secrets.DOCKERHUB_USERNAME }}/api-despachos:latest
-                  container_name: api_despachos_container
-                  restart: always
-                  ports:
-                    - '8081:8081'
-                  environment:
-                    - DB_ENDPOINT=db
-                    - DB_PORT=3306
-                    - DB_NAME=innovatech
-                    - DB_USERNAME=dbuser
-                    - DB_PASSWORD=dbpassword
-                  depends_on:
-                    - db
-              volumes:
-                db_data:
-                  driver: local
-              EOF\",
+              \"sudo mkdir -p ${{ env.BACKEND_APP_DIR }}\",
+              \"echo '${{ env.BACKEND_COMPOSE_B64 }}' | base64 -d | sudo tee ${{ env.BACKEND_APP_DIR }}/docker-compose.yml > /dev/null\",
               \"# 4. Asegurar permisos correctos de ec2-user\",
               \"sudo chown -R ec2-user:ec2-user ${{ env.BACKEND_APP_DIR }}\",
               \"# 5. Descargar nuevas imagenes y ejecutar\",
-              \"docker compose pull\",
-              \"docker compose up -d\"
+              \"cd ${{ env.BACKEND_APP_DIR }}\",
+              \"sudo docker compose pull\",
+              \"sudo docker compose up -d\"
             ]"

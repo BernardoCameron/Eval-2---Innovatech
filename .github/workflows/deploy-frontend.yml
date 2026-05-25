@@ -60,6 +60,23 @@ jobs:
           output=json
           EOF
 
+      - name: Generate docker-compose.yml
+        run: |
+          cat << 'EOF' > docker-compose.yml
+          version: '3.8'
+          services:
+            frontend:
+              image: ${{ secrets.DOCKERHUB_USERNAME }}/front-despacho:latest
+              container_name: frontend_container
+              restart: always
+              ports:
+                - '80:80'
+              environment:
+                - BACKEND_VENTAS_IP=${{ secrets.BACKEND_PRIVATE_IP }}
+                - BACKEND_DESPACHOS_IP=${{ secrets.BACKEND_PRIVATE_IP }}
+          EOF
+          echo "FRONTEND_COMPOSE_B64=$(base64 -w 0 docker-compose.yml)" >> $GITHUB_ENV
+
       - name: Deploy frontend via SSM
         run: |
           aws ssm send-command \
@@ -69,35 +86,25 @@ jobs:
             --parameters commands="[
               \"# 1. Instalar Docker si no esta presente\",
               \"if ! command -v docker &> /dev/null; then\",
-              \"  sudo dnf update -y\",
-              \"  sudo dnf install docker -y\",
+              \"  sudo dnf update -y || sudo yum update -y\",
+              \"  sudo dnf install docker -y || sudo yum install docker -y\",
               \"  sudo systemctl start docker\",
               \"  sudo systemctl enable docker\",
               \"  sudo usermod -aG docker ec2-user\",
               \"fi\",
               \"# 2. Instalar Docker Compose si no esta presente\",
               \"if ! docker compose version &> /dev/null; then\",
-              \"  sudo dnf install docker-compose-plugin -y\",
+              \"  sudo mkdir -p /usr/libexec/docker/cli-plugins\",
+              \"  sudo curl -L \\\"https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64\\\" -o /usr/libexec/docker/cli-plugins/docker-compose\",
+              \"  sudo chmod +x /usr/libexec/docker/cli-plugins/docker-compose\",
               \"fi\",
               \"# 3. Crear directorio de la app y escribir docker-compose.yml\",
-              \"mkdir -p ${{ env.FRONTEND_APP_DIR }}\",
-              \"cd ${{ env.FRONTEND_APP_DIR }}\",
-              \"cat << 'EOF' > docker-compose.yml
-              version: '3.8'
-              services:
-                frontend:
-                  image: ${{ secrets.DOCKERHUB_USERNAME }}/front-despacho:latest
-                  container_name: frontend_container
-                  restart: always
-                  ports:
-                    - '80:80'
-                  environment:
-                    - BACKEND_VENTAS_IP=${{ secrets.BACKEND_PRIVATE_IP }}
-                    - BACKEND_DESPACHOS_IP=${{ secrets.BACKEND_PRIVATE_IP }}
-              EOF\",
+              \"sudo mkdir -p ${{ env.FRONTEND_APP_DIR }}\",
+              \"echo '${{ env.FRONTEND_COMPOSE_B64 }}' | base64 -d | sudo tee ${{ env.FRONTEND_APP_DIR }}/docker-compose.yml > /dev/null\",
               \"# 4. Asegurar permisos correctos de ec2-user\",
               \"sudo chown -R ec2-user:ec2-user ${{ env.FRONTEND_APP_DIR }}\",
               \"# 5. Descargar nuevas imagenes y ejecutar\",
-              \"docker compose pull\",
-              \"docker compose up -d\"
+              \"cd ${{ env.FRONTEND_APP_DIR }}\",
+              \"sudo docker compose pull\",
+              \"sudo docker compose up -d\"
             ]"
