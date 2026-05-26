@@ -13,7 +13,7 @@ function Navbar({ currentView, setView }) {
       {/* Logo o título */}
       <div className="mb-10 text-center pb-4 border-b border-teal-500/30">
         <h2 className="text-2xl font-black tracking-wider text-teal-50 cursor-pointer" onClick={() => setView("dashboard")}>
-          ITPCARGO--
+          ETP-CARGO
         </h2>
         <p className="text-xs text-teal-200 mt-1 font-medium">Despacho Dashboard</p>
       </div>
