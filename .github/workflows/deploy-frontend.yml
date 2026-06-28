@@ -12,7 +12,7 @@ on:
 env:
   AWS_REGION: us-east-1
   AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
-  ECS_CLUSTER: innovatech-cluster
+  ECS_CLUSTER: familiar-frog-armxey
 
 jobs:
   # Job 1 - Compilar imagen del frontend y subirla a ECR
