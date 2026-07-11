@@ -1,15 +1,17 @@
 {
   "family": "task-def-despachos",
   "networkMode": "awsvpc",
-  "requiresCompatibilities": ["FARGATE"],
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
   "cpu": "256",
   "memory": "512",
-  "executionRoleArn": "arn:aws:iam::341430609758:role/LabRole",
-  "taskRoleArn": "arn:aws:iam::341430609758:role/LabRole",
+  "executionRoleArn": "arn:aws:iam::005021383645:role/LabRole",
+  "taskRoleArn": "arn:aws:iam::005021383645:role/LabRole",
   "containerDefinitions": [
     {
       "name": "api-despachos",
-      "image": "341430609758.dkr.ecr.us-east-1.amazonaws.com/innovatech/api-despachos:latest",
+      "image": "005021383645.dkr.ecr.us-east-1.amazonaws.com/innovatech/api-despachos:latest",
       "portMappings": [
         {
           "containerPort": 8081,
@@ -18,17 +20,32 @@
         }
       ],
       "environment": [
-        { "name": "DB_ENDPOINT", "value": "database-test.cyai06qrlbv8.us-east-1.rds.amazonaws.com" },
-        { "name": "DB_PORT",     "value": "3306" },
-        { "name": "DB_NAME",     "value": "innovatech" },
-        { "name": "DB_USERNAME", "value": "admin" },
-        { "name": "DB_PASSWORD", "value": "Passw0rd.," }
+        {
+          "name": "DB_ENDPOINT",
+          "value": "database-innovatech.cemmz1220ddq.us-east-1.rds.amazonaws.com"
+        },
+        {
+          "name": "DB_PORT",
+          "value": "3306"
+        },
+        {
+          "name": "DB_NAME",
+          "value": "database-innovatech"
+        },
+        {
+          "name": "DB_USERNAME",
+          "value": "admin"
+        },
+        {
+          "name": "DB_PASSWORD",
+          "value": "Passw0rd.,"
+        }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
-          "awslogs-group":         "/ecs/innovatech",
-          "awslogs-region":        "us-east-1",
+          "awslogs-group": "/ecs/innovatech",
+          "awslogs-region": "us-east-1",
           "awslogs-stream-prefix": "despachos"
         }
       },

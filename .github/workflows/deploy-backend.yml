@@ -14,7 +14,7 @@ on:
 env:
   AWS_REGION: us-east-1
   AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
-  ECS_CLUSTER: familiar-frog-armxey
+  ECS_CLUSTER: wonderful-shark-56xx0k
 
 jobs:
   # Job 1 - Compilar imagenes y subirlas a ECR

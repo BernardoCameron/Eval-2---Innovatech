@@ -1,15 +1,17 @@
 {
   "family": "task-def-frontend",
   "networkMode": "awsvpc",
-  "requiresCompatibilities": ["FARGATE"],
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
   "cpu": "256",
   "memory": "512",
-  "executionRoleArn": "arn:aws:iam::341430609758:role/LabRole",
-  "taskRoleArn": "arn:aws:iam::341430609758:role/LabRole",
+  "executionRoleArn": "arn:aws:iam::005021383645:role/LabRole",
+  "taskRoleArn": "arn:aws:iam::005021383645:role/LabRole",
   "containerDefinitions": [
     {
       "name": "frontend",
-      "image": "341430609758.dkr.ecr.us-east-1.amazonaws.com/innovatech/frontend:latest",
+      "image": "005021383645.dkr.ecr.us-east-1.amazonaws.com/innovatech/frontend:latest",
       "portMappings": [
         {
           "containerPort": 80,
@@ -18,14 +20,20 @@
         }
       ],
       "environment": [
-        { "name": "BACKEND_VENTAS_IP",    "value": "innovatech-alb-1373402750.us-east-1.elb.amazonaws.com" },
-        { "name": "BACKEND_DESPACHOS_IP", "value": "innovatech-alb-1373402750.us-east-1.elb.amazonaws.com" }
+        {
+          "name": "BACKEND_VENTAS_IP",
+          "value": "innovatech-alb-317168657.us-east-1.elb.amazonaws.com"
+        },
+        {
+          "name": "BACKEND_DESPACHOS_IP",
+          "value": "innovatech-alb-317168657.us-east-1.elb.amazonaws.com"
+        }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
-          "awslogs-group":         "/ecs/innovatech",
-          "awslogs-region":        "us-east-1",
+          "awslogs-group": "/ecs/innovatech",
+          "awslogs-region": "us-east-1",
           "awslogs-stream-prefix": "frontend"
         }
       },
